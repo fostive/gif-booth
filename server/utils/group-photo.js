@@ -1,5 +1,4 @@
 const sharp = require('sharp')
-const axios = require('axios')
 const fs = require('fs')
 
 const chunkArray = (array, size) => {
@@ -7,23 +6,6 @@ const chunkArray = (array, size) => {
   const firstChunk = array.slice(0, size)
   if (!firstChunk.length) return array
   return [firstChunk].concat(chunkArray(array.slice(size, array.length), size))
-}
-
-const fetchImg = async (url) => {
-  try {
-    const res = await axios({
-      url,
-      responseType: 'arraybuffer',
-    })
-    return res
-  } catch (e) {
-    return null
-  }
-}
-
-const fetchImgs = async (imgs) => {
-  const fetched = await Promise.all(imgs.map(fetchImg))
-  return fetched.filter((img) => img !== null)
 }
 
 const createImageLayout = (imgs) => {
@@ -72,41 +54,31 @@ const createImageLayout = (imgs) => {
   }
 }
 
-const compositeGif = async (buffer, { width, height, top, left, id }) => {
-  const toSizedBuffer = (frame) => frame.resize(width, height).raw().toBuffer()
-
-  let input
-  const firstFrame = await sharp(buffer)
+const createJpegComposite = async (buffer, { width, height, top, left }) => {
   try {
-    const { pages } = await firstFrame.metadata()
-    const page = Math.round(pages / 2) || 0
-    const middleFrame = await sharp(buffer, { page })
-    input = await toSizedBuffer(middleFrame)
-  } catch (e) {
-    // so far we have only seen faulty gifs cause this to catch
-    console.log(
-      'Failed to slice middle GIF frame (or "page"), defaulting to first frame.',
-      { id },
-    )
-    input = await toSizedBuffer(firstFrame)
-  }
+    const resizedBuffer = await sharp(buffer)
+      .resize(width, height)
+      .raw()
+      .toBuffer({ resolveWithObject: true })
 
-  return {
-    input,
-    raw: { width, height, channels: 4 },
-    top,
-    left,
+    return {
+      input: resizedBuffer.data,
+      raw: resizedBuffer.info,
+      top,
+      left,
+    }
+  } catch (e) {
+    console.log('Image Resize Failed')
+    return null
   }
 }
 
-const createGroupPhoto = async (urls) => {
+const createGroupPhoto = async (buffers) => {
   const padding = 16
   const brandingHeight = 80
   const conferenceOutputPath = './temp/conference_logo.png'
 
-  const imgs = await fetchImgs(urls.slice(0, 80))
-
-  const layout = createImageLayout(imgs)
+  const layout = createImageLayout(buffers)
 
   await sharp('./branding/Logo.png')
     .resize(null, brandingHeight)
@@ -125,12 +97,11 @@ const createGroupPhoto = async (urls) => {
     imgRows.map(async (row, i) => {
       const composites = await Promise.all(
         row.map((img) =>
-          compositeGif(img.data.data, {
+          createJpegComposite(img.data, {
             top: 0,
             left: img.left,
             width: layout.imgWidth,
             height: layout.imgHeight,
-            id: img.data.config.url,
           }),
         ),
       )
@@ -142,7 +113,7 @@ const createGroupPhoto = async (urls) => {
           channels: 3,
         },
       })
-        .composite(composites)
+        .composite(composites.filter((c) => c))
         .toBuffer({ resolveWithObject: true })
 
       return {
@@ -193,15 +164,15 @@ const createGroupPhoto = async (urls) => {
 
 const outputPath = './temp/group-photo.jpeg'
 
-const createGroupPhotoStream = async (urls) => {
+const createGroupPhotoStream = async (buffers) => {
   try {
-    const groupPhoto = await createGroupPhoto(urls)
-    console.log('Group Photo Processed')
+    const groupPhoto = await createGroupPhoto(buffers)
+    console.log('Group photo processed')
     const jpeg = await groupPhoto.jpeg({
       quality: 75,
     })
     await jpeg.toFile(outputPath)
-    console.log(`Group Photo Output to ${outputPath}`)
+    console.log(`Group photo output to ${outputPath}`)
     return fs.createReadStream(outputPath)
   } catch (e) {
     console.log(e)
@@ -209,4 +180,25 @@ const createGroupPhotoStream = async (urls) => {
   }
 }
 
-module.exports = { createGroupPhotoStream }
+const outputGifToJpeg = async (path) => {
+  let frame
+  const firstPage = await sharp(path)
+  try {
+    const { pages } = await firstPage.metadata()
+    const page = Math.round(pages / 2) || 0
+    const middlePage = await sharp(path, { page })
+    frame = middlePage
+  } catch (e) {
+    // so far we have only seen faulty gifs cause this to catch
+    console.log(
+      'Failed to slice middle GIF page, defaulting to first page:',
+      path,
+    )
+    frame = firstPage
+  }
+  const filepath = path.replace('.gif', '.jpeg')
+  await frame.jpeg({ quality: 75 }).toFile(filepath)
+  return filepath
+}
+
+module.exports = { outputGifToJpeg, createGroupPhotoStream }

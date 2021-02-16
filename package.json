@@ -17,14 +17,15 @@
   "license": "ISC",
   "dependencies": {
     "aws-sdk": "^2.729.0",
-    "axios": "^0.20.0",
     "concurrently": "^5.2.0",
     "dotenv": "^8.2.0",
     "express": "^4.17.1",
     "express-basic-auth": "^1.2.0",
     "fluent-ffmpeg": "^2.1.2",
     "multer": "^1.4.2",
-    "sharp": "^0.26.0"
+    "sharp": "^0.26.0",
+    "uuid": "^8.3.0",
+    "ws": "^7.3.1"
   },
   "devDependencies": {
     "babel-eslint": "^10.0.1",
@@ -52,5 +53,9 @@
       "eslint --fix",
       "prettier --write"
     ]
+  },
+  "optionalDependencies": {
+    "bufferutil": "^4.0.1",
+    "utf-8-validate": "^5.0.2"
   }
 }

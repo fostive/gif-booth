@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import Button from '../../components/Button'
 import Page from '../../components/Page'
 import { downloadFromS3 } from '../../utils/download'
+import { onWsEvent } from '../../websockets'
 import './GroupPhoto.css'
 
 const GroupPhoto = () => {
@@ -11,15 +12,12 @@ const GroupPhoto = () => {
 
   const createGroupPhoto = async () => {
     setIsGenerating(true)
-    const res = await fetch('/createGroupPhoto', {
+    fetch('/createGroupPhoto', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
     })
-    const json = await res.json()
-    setFile(json)
-    setIsGenerating(false)
   }
 
   const getGroupPhoto = async () => {
@@ -36,6 +34,14 @@ const GroupPhoto = () => {
 
   useEffect(() => {
     getGroupPhoto()
+    onWsEvent('group-photo', (data) => {
+      if (data.status === 200) {
+        setFile(data.data)
+      } else {
+        console.log(data.message, data.error)
+      }
+      setIsGenerating(false)
+    })
   }, [])
 
   const header = <h1>Create Group Photo</h1>
